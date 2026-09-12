@@ -137,7 +137,7 @@ const Dashboard = () => {
                   color: '#60a5fa'
                 }}
               >
-                {user?.targetRole || 'Software Engineer'}
+                {dashboardData?.user?.targetRole || 'Software Engineer'}
               </strong>{' '}
               | Ready to boost your interview readiness?
             </p>
