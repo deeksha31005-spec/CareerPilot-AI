@@ -1,28 +1,29 @@
 import dotenv from 'dotenv';
+import { GoogleGenAI } from '@google/genai';
 
 dotenv.config();
 
 console.log(
-  'OpenRouter key loaded:',
-  process.env.OPENROUTER_API_KEY ? 'YES' : 'NO'
+  'Gemini key loaded:',
+  process.env.GEMINI_API_KEY ? 'YES' : 'NO'
 );
+
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY
+});
 
 export const analyzeResumeWithAI = async (
   resumeText,
   targetRole
 ) => {
   try {
-    const apiKey = process.env.OPENROUTER_API_KEY;
-
-    if (!apiKey) {
+    if (!process.env.GEMINI_API_KEY) {
       throw new Error(
-        'OPENROUTER_API_KEY is not configured.'
+        'GEMINI_API_KEY is not configured.'
       );
     }
 
     const prompt = `
-You are an ATS resume analyzer.
-
 Analyze this resume for the target role.
 
 TARGET ROLE:
@@ -31,19 +32,19 @@ ${targetRole || 'Software Engineer'}
 RESUME:
 ${resumeText}
 
-Return ONLY valid JSON.
-Do not use markdown.
-Keep every value very short.
+Return ONLY one valid JSON object.
+
+Keep every answer extremely short.
 
 Use exactly:
 
 {
   "atsScore": 0,
   "summary": "",
-  "strengths": [],
+  "strengths": ["", "", ""],
   "missingSkills": [],
   "missingKeywords": [],
-  "improvements": [],
+  "improvements": ["", "", ""],
   "sectionAnalysis": {
     "contact": "",
     "summary": "",
@@ -56,63 +57,34 @@ Use exactly:
 }
 
 Rules:
-- atsScore: integer from 0 to 100.
-- strengths: exactly 3 short items.
-- missingSkills: maximum 4 short items.
-- missingKeywords: maximum 5 short items.
-- improvements: exactly 3 very short actionable items.
-- Each sectionAnalysis value must be very short.
-- summary must be maximum 2 short sentences.
+- atsScore must be 0-100.
+- summary: maximum 10 words.
+- strengths: exactly 3 items, maximum 5 words each.
+- missingSkills: maximum 4 items, maximum 4 words each.
+- missingKeywords: maximum 5 items, maximum 3 words each.
+- improvements: exactly 3 items, maximum 6 words each.
+- sectionAnalysis: maximum 5 words per value.
+- If a section is missing, use "Section missing."
 - Do not invent information.
-- If a section is missing, say "Section missing."
-- Focus on internships and entry-level jobs.
-- Make sure the JSON is complete and valid.
 `;
 
-    const response = await fetch(
-      'https://openrouter.ai/api/v1/chat/completions',
-      {
-        method: 'POST',
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.6-flash',
 
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'http://localhost:3001',
-          'X-Title': 'CareerPilot AI'
-        },
+      contents: prompt,
 
-        body: JSON.stringify({
-          model: 'openai/gpt-chat-latest',
+      config: {
+  maxOutputTokens: 1000,
 
-          messages: [
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
+  thinkingConfig: {
+    thinkingLevel: 'minimal'
+  },
 
-          temperature: 0.2,
-          max_tokens: 500
-        })
-      }
-    );
+  responseMimeType: 'application/json'
+}    
+});
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      console.error(
-        'OpenRouter API Error:',
-        data
-      );
-
-      throw new Error(
-        data?.error?.message ||
-        `OpenRouter API request failed with status ${response.status}.`
-      );
-    }
-
-    const content =
-      data?.choices?.[0]?.message?.content;
+    const content = response.text;
 
     if (!content) {
       throw new Error(
@@ -120,28 +92,18 @@ Rules:
       );
     }
 
-    let cleanedContent = content.trim();
-
-    if (cleanedContent.startsWith('```json')) {
-      cleanedContent = cleanedContent
-        .replace(/^```json/, '')
-        .replace(/```$/, '')
-        .trim();
-    } else if (cleanedContent.startsWith('```')) {
-      cleanedContent = cleanedContent
-        .replace(/^```/, '')
-        .replace(/```$/, '')
-        .trim();
-    }
+    console.log(
+      'Gemini response received successfully.'
+    );
 
     let analysis;
 
     try {
-      analysis = JSON.parse(cleanedContent);
+      analysis = JSON.parse(content);
     } catch (parseError) {
       console.error(
-        'Invalid AI JSON:',
-        cleanedContent
+        'Invalid Gemini JSON:',
+        content
       );
 
       throw new Error(
@@ -153,7 +115,7 @@ Rules:
 
   } catch (error) {
     console.error(
-      'AI Resume Analysis Error:',
+      'Gemini Resume Analysis Error:',
       error
     );
 

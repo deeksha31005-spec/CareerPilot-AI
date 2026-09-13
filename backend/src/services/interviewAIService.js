@@ -1,74 +1,48 @@
 import dotenv from 'dotenv';
+import { GoogleGenAI } from '@google/genai';
 
 dotenv.config();
 
-const callOpenRouter = async (prompt) => {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY
+});
 
-  if (!apiKey) {
-    throw new Error('OPENROUTER_API_KEY is not configured.');
+const callGemini = async (prompt, responseSchema) => {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error('GEMINI_API_KEY is not configured.');
   }
 
-  const response = await fetch(
-    'https://openrouter.ai/api/v1/chat/completions',
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'http://localhost:3001',
-        'X-Title': 'CareerPilot AI'
+  const response = await ai.models.generateContent({
+    model: 'gemini-3.6-flash',
+
+    contents: prompt,
+
+    config: {
+      maxOutputTokens: 800,
+
+      thinkingConfig: {
+        thinkingLevel: 'minimal'
       },
-      body: JSON.stringify({
-        model: 'openai/gpt-chat-latest',
-        messages: [
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        temperature: 0.3,
-        max_tokens: 500
-      })
+
+      responseMimeType: 'application/json',
+
+      responseSchema
     }
-  );
+  });
 
-  const data = await response.json();
-
-  if (!response.ok) {
-    console.error('OpenRouter Interview Error:', data);
-
-    throw new Error(
-      data?.error?.message ||
-      `OpenRouter request failed with status ${response.status}.`
-    );
-  }
-
-  const content =
-    data?.choices?.[0]?.message?.content;
+  const content = response.text;
 
   if (!content) {
     throw new Error('AI returned an empty response.');
   }
 
-  let cleanedContent = content.trim();
-
-  if (cleanedContent.startsWith('```json')) {
-    cleanedContent = cleanedContent
-      .replace(/^```json/, '')
-      .replace(/```$/, '')
-      .trim();
-  } else if (cleanedContent.startsWith('```')) {
-    cleanedContent = cleanedContent
-      .replace(/^```/, '')
-      .replace(/```$/, '')
-      .trim();
-  }
-
   try {
-    return JSON.parse(cleanedContent);
+    return JSON.parse(content);
   } catch (error) {
-    console.error('Invalid Interview AI JSON:', cleanedContent);
+    console.error(
+      'Invalid Interview Gemini JSON:',
+      content
+    );
 
     throw new Error(
       'AI returned incomplete or invalid JSON. Please try again.'
@@ -97,34 +71,54 @@ ${interviewType}
 DIFFICULTY:
 ${difficulty}
 
-Return ONLY valid JSON.
-Do not use markdown.
-
-Use exactly this structure:
-
-{
-  "questions": [
-    {
-      "question": "",
-      "category": ""
-    }
-  ]
-}
+Generate exactly 4 short questions.
 
 Rules:
-- Generate exactly 4 questions.
-- Keep questions short and clear.
 - Match the target role.
 - Match the interview type.
 - Match the difficulty.
-- For Technical: ask technical questions.
-- For HR: ask behavioral questions.
-- For Coding: ask coding/problem-solving questions.
-- For Mixed: combine technical and behavioral questions.
+- Technical: technical questions.
+- HR: behavioral questions.
+- Coding: coding/problem-solving questions.
+- Mixed: combine technical and behavioral questions.
 - Do not provide answers.
 `;
 
-  return await callOpenRouter(prompt);
+  return await callGemini(
+    prompt,
+    {
+      type: 'object',
+
+      properties: {
+        questions: {
+          type: 'array',
+
+          items: {
+            type: 'object',
+
+            properties: {
+              question: {
+                type: 'string'
+              },
+
+              category: {
+                type: 'string'
+              }
+            },
+
+            required: [
+              'question',
+              'category'
+            ]
+          }
+        }
+      },
+
+      required: [
+        'questions'
+      ]
+    }
+  );
 };
 
 
@@ -148,27 +142,53 @@ ${question}
 CANDIDATE ANSWER:
 ${answer}
 
-Return ONLY valid JSON.
-Do not use markdown.
-
-Use exactly this structure:
-
-{
-  "score": 0,
-  "feedback": "",
-  "strengths": [],
-  "improvements": []
-}
-
 Rules:
-- score must be an integer from 0 to 100.
-- feedback must be maximum 2 short sentences.
-- strengths: maximum 3 short items.
-- improvements: maximum 3 short items.
+- score must be 0-100.
+- feedback maximum 2 short sentences.
+- strengths maximum 3 short items.
+- improvements maximum 3 short items.
 - Be constructive and beginner-friendly.
 - Evaluate relevance, clarity, correctness and completeness.
 - Do not invent information about the candidate.
 `;
 
-  return await callOpenRouter(prompt);
+  return await callGemini(
+    prompt,
+    {
+      type: 'object',
+
+      properties: {
+        score: {
+          type: 'integer'
+        },
+
+        feedback: {
+          type: 'string'
+        },
+
+        strengths: {
+          type: 'array',
+
+          items: {
+            type: 'string'
+          }
+        },
+
+        improvements: {
+          type: 'array',
+
+          items: {
+            type: 'string'
+          }
+        }
+      },
+
+      required: [
+        'score',
+        'feedback',
+        'strengths',
+        'improvements'
+      ]
+    }
+  );
 };

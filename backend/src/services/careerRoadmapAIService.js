@@ -1,16 +1,21 @@
 import dotenv from 'dotenv';
+import { GoogleGenAI } from '@google/genai';
 
 dotenv.config();
+
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY
+});
 
 export const generateCareerRoadmapWithAI = async (
   resumeText,
   targetRole
 ) => {
   try {
-    const apiKey = process.env.OPENROUTER_API_KEY;
-
-    if (!apiKey) {
-      throw new Error('OPENROUTER_API_KEY is not configured.');
+    if (!process.env.GEMINI_API_KEY) {
+      throw new Error(
+        'GEMINI_API_KEY is not configured.'
+      );
     }
 
     const prompt = `
@@ -24,11 +29,10 @@ ${targetRole || 'Software Engineer'}
 RESUME:
 ${resumeText}
 
-Return ONLY valid JSON.
-Do not use markdown.
-Keep all text concise.
+Return ONLY one valid JSON object.
+Keep every value very short.
 
-Use exactly this structure:
+Use exactly:
 
 {
   "targetRole": "",
@@ -65,83 +69,55 @@ Use exactly this structure:
 Rules:
 - targetRole: target job role.
 - currentLevel: beginner, intermediate, or advanced.
-- careerSummary: maximum 2 short sentences.
-- skillGap: maximum 5 short skills.
+- careerSummary: maximum 10 words.
+- skillGap: maximum 5 short items.
 - roadmap: exactly 3 phases.
 - Each phase: maximum 4 skills.
 - Each phase: maximum 3 tasks.
-- recommendedProjects: maximum 3 projects.
-- recommendedCertifications: maximum 3 certifications.
-- Keep every item short.
-- Do not invent experience or skills that are not present in the resume.
+- Each skill/task: maximum 5 words.
+- recommendedProjects: maximum 3 short items.
+- recommendedCertifications: maximum 3 short items.
+- Do not invent experience or skills.
 - Focus on internships and entry-level jobs.
-- Return complete valid JSON.
+- Keep the JSON compact.
 `;
 
-    const response = await fetch(
-      'https://openrouter.ai/api/v1/chat/completions',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'http://localhost:3001',
-          'X-Title': 'CareerPilot AI'
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.6-flash',
+
+      contents: prompt,
+
+      config: {
+        maxOutputTokens: 1200,
+
+        thinkingConfig: {
+          thinkingLevel: 'minimal'
         },
-        body: JSON.stringify({
-          model: 'openai/gpt-chat-latest',
-          messages: [
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.2,
-          max_tokens: 800
-        })
+
+        responseMimeType: 'application/json'
       }
-    );
+    });
 
-    const data = await response.json();
+    const content = response.text;
 
-    if (!response.ok) {
-      console.error('OpenRouter API Error:', data);
-
+    if (!content) {
       throw new Error(
-        data?.error?.message ||
-        `OpenRouter API request failed with status ${response.status}.`
+        'AI returned an empty response.'
       );
     }
 
-    const content =
-      data?.choices?.[0]?.message?.content;
-
-    if (!content) {
-      throw new Error('AI returned an empty response.');
-    }
-
-    let cleanedContent = content.trim();
-
-    if (cleanedContent.startsWith('```json')) {
-      cleanedContent = cleanedContent
-        .replace(/^```json/, '')
-        .replace(/```$/, '')
-        .trim();
-    } else if (cleanedContent.startsWith('```')) {
-      cleanedContent = cleanedContent
-        .replace(/^```/, '')
-        .replace(/```$/, '')
-        .trim();
-    }
+    console.log(
+      'Gemini Career Roadmap response received successfully.'
+    );
 
     let roadmap;
 
     try {
-      roadmap = JSON.parse(cleanedContent);
+      roadmap = JSON.parse(content);
     } catch (parseError) {
       console.error(
-        'Invalid AI JSON:',
-        cleanedContent
+        'Invalid Gemini Roadmap JSON:',
+        content
       );
 
       throw new Error(
