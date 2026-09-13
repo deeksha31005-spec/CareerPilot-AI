@@ -6,7 +6,8 @@ import { AuthContext } from '../context/AuthContext';
 
 function Profile() {
   const navigate = useNavigate();
-  const { token } = useContext(AuthContext);
+
+  const { token, updateUser } = useContext(AuthContext);
 
   const [profile, setProfile] = useState({
     name: '',
@@ -43,6 +44,15 @@ function Profile() {
           targetRole: response.data.targetRole || ''
         });
 
+        // Keep AuthContext synchronized with the latest profile data
+        if (updateUser) {
+          updateUser({
+            name: response.data.name || '',
+            email: response.data.email || '',
+            targetRole: response.data.targetRole || ''
+          });
+        }
+
         setError('');
       } catch (error) {
         setError(
@@ -55,7 +65,7 @@ function Profile() {
     };
 
     fetchProfile();
-  }, [token]);
+  }, [token, updateUser]);
 
   const handleChange = (e) => {
     setProfile({
@@ -96,11 +106,20 @@ function Profile() {
         }
       );
 
-      setProfile({
+      const updatedUser = {
         name: response.data.name,
         email: response.data.email,
         targetRole: response.data.targetRole
-      });
+      };
+
+      setProfile(updatedUser);
+
+      // IMPORTANT:
+      // Update AuthContext + localStorage immediately
+      // so Dashboard and Navbar show the new target role.
+      if (updateUser) {
+        updateUser(updatedUser);
+      }
 
       setMessage('Profile updated successfully.');
     } catch (error) {
